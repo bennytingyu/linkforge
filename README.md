@@ -1,98 +1,74 @@
 # LinkForge
 
-LinkForge is a web application planned to use **React.js** for the frontend and **Express.js** for the backend. This repository is currently in the planning stage; application code and package scripts have not yet been added.
+A URL shortener built with React, Vite, and Express. Create short links with generated codes or custom aliases, copy and open them, track redirect clicks, and delete links from the dashboard.
 
-## Planned technology stack
+## Quick start
 
-- **Frontend:** React.js, with Vite for local development and production builds.
-- **Backend:** Express.js running on Node.js.
-- **API:** A REST API connecting the React interface to the Express server.
-- **Package manager:** npm.
-
-## Proposed project structure
-
-```text
-linkforge/
-├── client/                 # React application
-│   ├── public/             # Static assets
-│   ├── src/
-│   │   ├── components/     # Reusable UI components
-│   │   ├── pages/          # Application pages
-│   │   ├── services/       # API requests
-│   │   └── App.jsx         # Root React component
-│   └── package.json
-├── server/                 # Express application
-│   ├── src/
-│   │   ├── routes/         # API routes
-│   │   ├── controllers/    # Request handlers
-│   │   ├── middleware/     # Shared request middleware
-│   │   └── index.js        # Server entry point
-│   ├── .env.example        # Documented environment variables
-│   └── package.json
-└── README.md
-```
-
-This structure is a proposal and will be created during implementation.
-
-## Local development
-
-Install a supported Node.js LTS release and npm before setting up the application.
-
-The following commands describe the intended workflow **after the frontend and backend have been scaffolded**. They require a `package.json` in each directory and the scripts described below.
-
-### Backend
+Install Node.js **22.12 or later** and npm, then run these commands from the repository root:
 
 ```bash
-cd server
 npm install
-cp .env.example .env
+cp server/.env.example server/.env
 npm run dev
 ```
 
-The backend should provide a `dev` script for development and a `start` script for production.
+Open **http://localhost:5173**. The API runs at **http://localhost:3000**; Vite proxies `/api` requests to it. Short links point to the API, which redirects visitors to their destinations.
 
-### Frontend
+## Commands
 
-In a separate terminal, starting from the repository root:
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Run the API and React development server together. |
+| `npm test` | Run backend HTTP tests and skip optional integration tests. |
+| `npm run test:integration` | Test a separately running API. |
+| `npm run build` | Build the frontend into `web/dist/`. |
+| `npm start` | Start Express, serving the built frontend when available. |
 
-```bash
-cd client
-npm install
-npm run dev
-```
+To run the production application locally, run `npm run build` followed by `npm start`, then open **http://localhost:3000**.
 
-The frontend should provide Vite's `dev`, `build`, and `preview` scripts. Open the development URL printed in the terminal.
+## Configuration
 
-## Planned configuration
-
-The server's `.env.example` should document its required configuration. A minimal starting point is:
+Set backend options in `server/.env`:
 
 ```dotenv
 PORT=3000
-NODE_ENV=development
+BASE_URL=http://localhost:3000
 ```
 
-During development, configure Vite to proxy `/api` requests to the Express server at `http://localhost:3000`. Frontend API calls can then use relative paths such as `/api/health`.
+`BASE_URL` is the externally reachable origin used in generated short links. For deployment, set it to your public HTTPS URL. Keep `.env` files out of version control. If you change the development API port, set `API_PROXY_TARGET` to the matching API origin when running Vite.
 
-Keep local `.env` files out of version control. Never include server secrets in frontend code or Vite environment variables exposed to the browser.
+## API
 
-## Production build
+Successful JSON responses use `{ "data": ... }`; errors use `{ "error": "message" }`.
 
-Once the frontend has been scaffolded:
+| Method | Path | Behavior |
+| --- | --- | --- |
+| GET | `/api/health` | Return API status. |
+| GET | `/api/links` | List links and click counts. |
+| POST | `/api/links` | Create a link with `url` and optional `customAlias`; return 201. |
+| DELETE | `/api/links/:code` | Delete a link; return 404 if missing. |
+| GET | `/:code` | Redirect with 302 and increment clicks. |
 
 ```bash
-cd client
-npm run build
+curl -X POST http://localhost:3000/api/links \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com/article","customAlias":"my-article"}'
 ```
 
-Vite will generate the frontend assets in `client/dist/`. Deployment should either serve those assets through Express or host them separately with the appropriate API URL and CORS configuration.
+Links contain `code`, `url`, `shortUrl`, `createdAt`, and `clicks`. Destinations must be absolute HTTP or HTTPS URLs without embedded credentials. Custom aliases contain 3–32 letters, digits, underscores, or hyphens. Existing or reserved aliases return 409.
 
-## Implementation roadmap
+## Project structure
 
-- [ ] Scaffold the React frontend and Express backend.
-- [ ] Add development scripts and environment configuration.
-- [ ] Implement a health-check API endpoint.
-- [ ] Build the application pages and API routes.
-- [ ] Add input validation and consistent error handling.
-- [ ] Add tests for core application behavior.
-- [ ] Document deployment and update this README with working setup commands.
+```text
+server/src/        Express API, startup, and in-memory link store
+server/test/       Isolated backend HTTP tests
+web/src/           React dashboard and styles
+tests/integration/ Optional tests against a running API
+docs/              Test instructions and manual checks
+```
+
+See [AGENTS.md](AGENTS.md) for contributor conventions and [docs/testing.md](docs/testing.md) for validation instructions.
+
+## Current scope
+
+Links live in memory and reset when the server restarts. The dashboard and API are public and unauthenticated: everyone can view or delete all links. This is a local prototype; persistence, user accounts, authorization, and abuse protection are future work before operating a shared public service.
