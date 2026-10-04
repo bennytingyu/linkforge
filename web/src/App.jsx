@@ -5,6 +5,7 @@ function Icon({ name, size = 20, ...props }) {
     link: <><path d="m10 13 4-4" /><path d="M8 16H6a4 4 0 0 1 0-8h3m6 0h3a4 4 0 0 1 0 8h-3" /></>,
     arrow: <><path d="M5 12h14m-5-5 5 5-5 5" /></>,
     copy: <><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V4H4v12h4" /></>,
+    edit: <><path d="m16 3 5 5-12 12-6 1 1-6L16 3Z" /><path d="m14 5 5 5" /></>,
     check: <path d="m5 12 4 4L19 6" />,
     external: <><path d="M14 3h7v7m0-7L10 14" /><path d="M10 3H4v17h17v-6" /></>,
     trash: <><path d="M3 6h18M9 6V3h6v3m-10 0 1 15h12l1-15M10 10v7m4-7v7" /></>,
@@ -48,6 +49,9 @@ export default function App() {
   const [deleting, setDeleting] = useState('');
   const [confirmDelete, setConfirmDelete] = useState('');
   const [notice, setNotice] = useState('');
+  const [editing, setEditing] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState('');
 
   async function loadLinks() {
     setLoading(true);
@@ -116,6 +120,34 @@ export default function App() {
     }
   }
 
+  function startEditing(link) {
+    setEditing({ code: link.code, url: link.url, customAlias: link.code });
+    setEditError('');
+    setConfirmDelete('');
+  }
+
+  async function saveEdit(event) {
+    event.preventDefault();
+    setSaving(true);
+    setEditError('');
+    try {
+      const updated = await request(`/api/links/${encodeURIComponent(editing.code)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: editing.url.trim(), customAlias: editing.customAlias.trim() })
+      });
+      setLinks((current) => current.map((link) => link.code === editing.code ? updated : link));
+      setResult((current) => current?.code === editing.code ? updated : current);
+      setCopied('');
+      setNotice('Link updated.');
+      setEditing(null);
+    } catch (cause) {
+      setEditError(cause.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const totalClicks = links.reduce((total, link) => total + link.clicks, 0);
 
   return (
@@ -153,7 +185,19 @@ export default function App() {
               <div className="link-details"><a className="short-link" href={link.shortUrl} target="_blank" rel="noreferrer">{displayUrl(link.shortUrl)}<Icon name="external" size={14} /></a><a className="destination-link" href={link.url} target="_blank" rel="noreferrer" title={link.url}>{link.url}</a></div>
               <time dateTime={link.createdAt}>{new Date(link.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</time>
               <span className="click-count"><Icon name="cursor" size={14} />{link.clicks.toLocaleString()}</span>
-              <div className="row-actions">{confirmDelete === link.code ? <><button className="delete-confirm" onClick={() => remove(link)} disabled={deleting === link.code}>{deleting === link.code ? 'Deleting…' : 'Delete?'}</button><button className="cancel-delete" onClick={() => setConfirmDelete('')} aria-label="Cancel deletion">Cancel</button></> : <><button className="icon-button" onClick={() => copy(link)} aria-label={`Copy link ${link.code}`} title="Copy link"><Icon name={copied === link.code ? 'check' : 'copy'} size={17} /></button><button className="icon-button delete-button" onClick={() => setConfirmDelete(link.code)} aria-label={`Delete link ${link.code}`} title="Delete link"><Icon name="trash" size={17} /></button></>}</div>
+              <div className="row-actions">{editing?.code === link.code ? null : confirmDelete === link.code ? <><button className="delete-confirm" onClick={() => remove(link)} disabled={deleting === link.code}>{deleting === link.code ? 'Deleting…' : 'Delete?'}</button><button className="cancel-delete" onClick={() => setConfirmDelete('')} aria-label="Cancel deletion">Cancel</button></> : <><button className="icon-button" onClick={() => startEditing(link)} disabled={saving} aria-label={`Edit link ${link.code}`} title="Edit link"><Icon name="edit" size={17} /></button><button className="icon-button" onClick={() => copy(link)} aria-label={`Copy link ${link.code}`} title="Copy link"><Icon name={copied === link.code ? 'check' : 'copy'} size={17} /></button><button className="icon-button delete-button" onClick={() => setConfirmDelete(link.code)} aria-label={`Delete link ${link.code}`} title="Delete link"><Icon name="trash" size={17} /></button></>}</div>
+              {editing?.code === link.code && <form className="edit-form" onSubmit={saveEdit} aria-label={`Edit link ${link.code}`}>
+                <fieldset disabled={saving}>
+                  <legend>Edit link</legend>
+                  <label htmlFor="edit-url">Destination URL</label>
+                  <input id="edit-url" type="url" required maxLength={8192} autoFocus value={editing.url} onChange={(event) => setEditing({ ...editing, url: event.target.value })} />
+                  <label htmlFor="edit-alias">Short link alias</label>
+                  <input id="edit-alias" required minLength={3} maxLength={32} pattern={'[A-Za-z0-9_\\-]{3,32}'} value={editing.customAlias} onChange={(event) => setEditing({ ...editing, customAlias: event.target.value })} aria-describedby="edit-help" />
+                  <p id="edit-help">Use 3–32 letters, numbers, hyphens, or underscores. Renaming replaces the old short URL; shared copies of the old URL will stop working.</p>
+                  {editError && <div className="error-message" role="alert">{editError}</div>}
+                  <div className="edit-actions"><button className="primary-button" type="submit">{saving ? 'Saving…' : 'Save changes'}</button><button className="refresh-button" type="button" onClick={() => { setEditing(null); setEditError(''); }}>Cancel</button></div>
+                </fieldset>
+              </form>}
             </div>)}
           </div>
           <p className="storage-note">Links are stored for this server session. A restart gives you a fresh start.</p>

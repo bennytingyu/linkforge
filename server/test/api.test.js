@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import { existsSync } from 'node:fs';
 import test from 'node:test';
 import { createApp } from '../src/server.js';
 
@@ -29,6 +30,21 @@ test('health check and a fresh link list use data envelopes', async (t) => {
   assert.equal(health.response.status, 200);
   assert.deepEqual(health.body, { data: { status: 'ok' } });
   assert.deepEqual((await request('/api/links')).body, { data: [] });
+});
+
+test('production dashboard and its assets are served from the built frontend', {
+  skip: !existsSync(new URL('../../web/dist/index.html', import.meta.url))
+}, async (t) => {
+  const request = await startApi(t);
+  const { response, body } = await request('/');
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type'), /text\/html/);
+  assert.match(body, /id="root"/);
+  const assets = [...body.matchAll(/(?:src|href)="(\/assets\/[^\"]+)"/g)].map((match) => match[1]);
+  assert.ok(assets.length >= 2);
+  for (const asset of assets) {
+    assert.equal((await request(asset)).response.status, 200, asset);
+  }
 });
 
 test('create a generated short link and retrieve it in the list', async (t) => {
@@ -167,4 +183,73 @@ test('deleting a link removes it and missing links return JSON errors', async (t
     assert.equal(response.status, 404);
     assert.equal(typeof body.error, 'string');
   }
+});
+
+test('editing a destination preserves its alias, clicks, date, and list position', async (t) => {
+  const request = await startApi(t);
+  const first = await request('/api/links', {
+    method: 'POST', body: { url: 'https://example.com/old', customAlias: 'first-link' }
+  });
+  await request('/first-link', { redirect: 'manual' });
+  const second = await request('/api/links', {
+    method: 'POST', body: { url: 'https://example.org/', customAlias: 'second-link' }
+  });
+  const updated = await request('/api/links/first-link', {
+    method: 'PATCH', body: { url: '  HTTPS://EXAMPLE.COM/new  ' }
+  });
+  assert.equal(updated.response.status, 200);
+  assert.deepEqual(updated.body.data, { ...first.body.data, url: 'https://example.com/new', clicks: 1 });
+  assert.deepEqual((await request('/api/links')).body.data, [second.body.data, updated.body.data]);
+  const redirect = await request('/first-link', { redirect: 'manual' });
+  assert.equal(redirect.response.headers.get('location'), 'https://example.com/new');
+});
+
+test('renaming replaces the old redirect and supports subsequent edits and deletion', async (t) => {
+  const request = await startApi(t);
+  const original = await request('/api/links', {
+    method: 'POST', body: { url: 'https://example.com/', customAlias: 'old-code' }
+  });
+  await request('/old-code', { redirect: 'manual' });
+  const renamed = await request('/api/links/old-code', {
+    method: 'PATCH', body: { customAlias: 'New_Code-42' }
+  });
+  assert.equal(renamed.response.status, 200);
+  assert.deepEqual(renamed.body.data, {
+    ...original.body.data, code: 'New_Code-42', shortUrl: 'https://sho.rt/New_Code-42', clicks: 1
+  });
+  assert.equal((await request('/old-code', { redirect: 'manual' })).response.status, 404);
+  assert.equal((await request('/New_Code-42', { redirect: 'manual' })).response.status, 302);
+  const edited = await request('/api/links/New_Code-42', {
+    method: 'PATCH', body: { url: 'https://example.org/new', customAlias: 'New_Code-42' }
+  });
+  assert.equal(edited.response.status, 200);
+  assert.equal(edited.body.data.clicks, 2);
+  assert.equal((await request('/api/links/New_Code-42', { method: 'DELETE' })).response.status, 200);
+});
+
+test('invalid and conflicting edits leave all links unchanged', async (t) => {
+  const request = await startApi(t);
+  for (const customAlias of ['edit-me', 'taken-code']) {
+    await request('/api/links', { method: 'POST', body: { url: 'https://example.com/', customAlias } });
+  }
+  const before = (await request('/api/links')).body;
+  for (const body of [null, [], {}, { unrelated: true }, { url: null }, { url: 'ftp://example.com' },
+    { url: 'https://user:secret@example.com/' }, { url: `https://example.com/${'a'.repeat(8192)}` },
+    { customAlias: '' }, { customAlias: null }, { customAlias: 'ab' },
+    { customAlias: 'a'.repeat(33) }, { customAlias: 'has spaces' }]) {
+    const updated = await request('/api/links/edit-me', { method: 'PATCH', body });
+    assert.equal(updated.response.status, 400);
+    assert.equal(typeof updated.body.error, 'string');
+  }
+  for (const customAlias of ['taken-code', 'API', 'assets', 'robots', 'favicon']) {
+    const updated = await request('/api/links/edit-me', {
+      method: 'PATCH', body: { url: 'https://example.org/changed', customAlias }
+    });
+    assert.equal(updated.response.status, 409);
+    assert.equal(typeof updated.body.error, 'string');
+  }
+  assert.deepEqual((await request('/api/links')).body, before);
+  const missing = await request('/api/links/missing-code', { method: 'PATCH', body: { customAlias: 'new-code' } });
+  assert.equal(missing.response.status, 404);
+  assert.equal(typeof missing.body.error, 'string');
 });

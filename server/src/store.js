@@ -32,6 +32,22 @@ export function createStore() {
       links.set(code, link);
       return copy(link);
     },
+    update(code, { url, customAlias = code }) {
+      const link = links.get(code);
+      if (!link) return undefined;
+      if (reservedCodes.has(customAlias.toLowerCase()) || (customAlias !== code && links.has(customAlias))) {
+        const error = new Error('That alias is already in use. Choose another.');
+        error.status = 409;
+        throw error;
+      }
+      const updated = { ...link, code: customAlias, url };
+      // Replace the key in place so renaming preserves creation order.
+      const entries = [...links.entries()].map(([key, value]) =>
+        key === code ? [customAlias, updated] : [key, value]);
+      links.clear();
+      for (const [key, value] of entries) links.set(key, value);
+      return copy(updated);
+    },
     delete(code) {
       return links.delete(code);
     },

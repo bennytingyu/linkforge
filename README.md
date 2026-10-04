@@ -1,6 +1,6 @@
 # LinkForge
 
-A URL shortener built with React, Vite, and Express. Create short links with generated codes or custom aliases, copy and open them, track redirect clicks, and delete links from the dashboard.
+A URL shortener built with React, Vite, and Express. Create short links with generated codes or custom aliases, copy and open them, track redirect clicks, edit aliases and destinations, and delete links from the dashboard.
 
 ## Quick start
 
@@ -46,6 +46,7 @@ Successful JSON responses use `{ "data": ... }`; errors use `{ "error": "message
 | GET | `/api/health` | Return API status. |
 | GET | `/api/links` | List links and click counts. |
 | POST | `/api/links` | Create a link with `url` and optional `customAlias`; return 201. |
+| PATCH | `/api/links/:code` | Update `url`, `customAlias`, or both; preserve clicks and creation date. |
 | DELETE | `/api/links/:code` | Delete a link; return 404 if missing. |
 | GET | `/:code` | Redirect with 302 and increment clicks. |
 
@@ -56,6 +57,8 @@ curl -X POST http://localhost:3000/api/links \
 ```
 
 Links contain `code`, `url`, `shortUrl`, `createdAt`, and `clicks`. Destinations must be absolute HTTP or HTTPS URLs without embedded credentials. Custom aliases contain 3–32 letters, digits, underscores, or hyphens. Existing or reserved aliases return 409.
+
+Renaming a link replaces its short URL: the old URL returns 404. Omit `customAlias` when updating only the destination to keep the existing short URL.
 
 ## Project structure
 

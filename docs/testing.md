@@ -25,8 +25,9 @@ Use a development or test instance: this test creates, visits, and deletes one u
 2. Create a valid destination with and without a custom alias. Confirm the new link appears and displays its short URL.
 3. Try an invalid URL and a duplicate alias. Confirm a useful error appears and existing links remain available.
 4. Copy a short URL, open it, and confirm the destination loads. Refresh the dashboard and verify the click count increased.
-5. Delete a link. Confirm it disappears and the old short URL returns 404.
-6. Check narrow mobile and desktop widths, keyboard navigation, field labels, loading indicators, and empty states.
-7. Run `npm run build`, stop development servers, and run `npm start`. Repeat creation and redirect checks at `http://localhost:3000` to verify frontend serving and API routing together.
+5. Edit a link’s destination and alias. Confirm clicks and creation date are preserved, the updated URL redirects correctly, and the old alias returns 404. Try a duplicate or invalid alias and confirm the form retains your input; test Cancel.
+6. Delete a link. Confirm it disappears and the old short URL returns 404.
+7. Check narrow mobile and desktop widths, keyboard navigation, field labels, loading indicators, and empty states.
+8. Run `npm run build`, stop development servers, and run `npm start`. Repeat creation and redirect checks at `http://localhost:3000` to verify frontend serving and API routing together.
 
 No coverage percentage is enforced. Add HTTP regression tests for behavior changes. Browser interactions are currently checked manually; a passing API suite alone does not establish frontend behavior.

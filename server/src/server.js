@@ -51,6 +51,24 @@ export function createApp({ store = createStore(), baseUrl = 'http://localhost:3
     return res.status(201).json({ data: serialize(link) });
   });
 
+  app.patch('/api/links/:code', (req, res) => {
+    const current = store.get(req.params.code);
+    if (!current) return res.status(404).json({ error: 'Short link not found.' });
+    const body = req.body;
+    if (!body || Array.isArray(body) || typeof body !== 'object' ||
+      (!Object.hasOwn(body, 'url') && !Object.hasOwn(body, 'customAlias'))) {
+      return res.status(400).json({ error: 'Provide a destination URL or custom alias to update.' });
+    }
+    const input = {
+      url: Object.hasOwn(body, 'url') ? body.url : current.url,
+      customAlias: Object.hasOwn(body, 'customAlias') ? body.customAlias : current.code
+    };
+    const error = validateInput(input);
+    if (error) return res.status(400).json({ error });
+    const link = store.update(current.code, { ...input, url: new URL(input.url.trim()).href });
+    return res.json({ data: serialize(link) });
+  });
+
   app.delete('/api/links/:code', (req, res) => {
     if (!store.delete(req.params.code)) {
       return res.status(404).json({ error: 'Short link not found.' });
@@ -65,7 +83,8 @@ export function createApp({ store = createStore(), baseUrl = 'http://localhost:3
 
   if (existsSync(`${webDist}/index.html`)) {
     app.use('/assets', express.static(`${webDist}/assets`));
-    app.get('/', (req, res) => res.sendFile(`${webDist}/index.html`));
+    // The trusted build path may live inside a hidden directory (such as .codex).
+    app.get('/', (req, res) => res.sendFile(`${webDist}/index.html`, { dotfiles: 'allow' }));
   }
 
   app.get('/:code', (req, res) => {
